@@ -88,6 +88,11 @@ If a client deposits $100, withdraws $80, then disputes the deposit → availabl
 - **Hard errors** (stop processing): CSV parse errors, invalid transaction format
 - **Soft errors** (log and continue): insufficient funds, client mismatch, already disputed, non-existent transaction
 
+### Client Mismatch Handling
+When a dispute/resolve/chargeback references a transaction belonging to a **different client**, it's treated as a **soft error** (ignored, logged). 
+
+Rationale: The spec says to ignore invalid transactions "and assume this is an error on our partner's side." A client cannot dispute another client's deposit - that's malformed partner data, not a system failure.
+
 ### Invariant Assertions
 Account operations include `debug_assert!` checks to validate:
 - `total = available + held`
@@ -178,3 +183,8 @@ let mut engine = PaymentEngine::new();
 engine.process_transactions(Cursor::new(csv))?;
 engine.export_accounts(std::io::stdout())?;
 ```
+
+## Note on Development
+
+This project was developed with AI assistance (for productivity: faster test writing, boilerplate, documentation). All design decisions, architecture, and error handling strategies were guided by me. Transparency matters.
+

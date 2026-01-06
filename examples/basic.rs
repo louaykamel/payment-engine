@@ -28,9 +28,6 @@ chargeback,1,1,
     engine
         .process_transactions(Cursor::new(transactions))
         .expect("Failed to process transactions");
-
-    // Export results to stdout
-    println!("\n=== Final Account State ===");
     engine
         .export_accounts(std::io::stdout())
         .expect("Failed to export accounts");

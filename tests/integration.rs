@@ -276,6 +276,45 @@ deposit,  1,  1,  100.0";
     assert_eq!(accounts[0].available(), dec!(100));
 }
 
+#[test]
+fn test_empty_rows_are_skipped() {
+    // Empty row after header
+    let input = "type,client,tx,amount
+
+deposit,1,1,100.0";
+
+    let output = process_csv(input);
+    let accounts = parse_output(&output);
+    assert_eq!(accounts[0].available(), dec!(100));
+}
+
+#[test]
+fn test_multiple_empty_rows() {
+    let input = "type,client,tx,amount
+
+deposit,1,1,100.0
+
+deposit,1,2,50.0
+
+";
+
+    let output = process_csv(input);
+    let accounts = parse_output(&output);
+    assert_eq!(accounts[0].available(), dec!(150));
+}
+
+#[test]
+fn test_empty_row_between_transactions() {
+    let input = "type,client,tx,amount
+deposit,1,1,100.0
+
+withdrawal,1,2,30.0";
+
+    let output = process_csv(input);
+    let accounts = parse_output(&output);
+    assert_eq!(accounts[0].available(), dec!(70));
+}
+
 // ============================================================================
 // Advanced Edge Cases
 // ============================================================================
@@ -294,6 +333,57 @@ dispute,1,1,";
     assert_eq!(accounts[0].available(), dec!(-80));
     assert_eq!(accounts[0].held(), dec!(100)); // held
     assert_eq!(accounts[0].total(), dec!(20)); // total unchanged
+}
+
+#[test]
+fn test_dispute_with_wrong_client_is_ignored() {
+    // Client 2 tries to dispute Client 1's deposit
+    let input = "type,client,tx,amount
+deposit,1,1,100.0
+dispute,2,1,";
+
+    let output = process_csv(input);
+    let accounts = parse_output(&output);
+
+    // Client 2 should not affect Client 1's deposit
+    let client1 = accounts.iter().find(|a| a.client_id() == 1).unwrap();
+    assert_eq!(client1.available(), dec!(100)); // not disputed
+    assert_eq!(client1.held(), dec!(0));
+}
+
+#[test]
+fn test_resolve_with_wrong_client_is_ignored() {
+    // Client 2 tries to resolve Client 1's dispute
+    let input = "type,client,tx,amount
+deposit,1,1,100.0
+dispute,1,1,
+resolve,2,1,";
+
+    let output = process_csv(input);
+    let accounts = parse_output(&output);
+
+    // Client 2's resolve attempt should be ignored
+    let client1 = accounts.iter().find(|a| a.client_id() == 1).unwrap();
+    assert_eq!(client1.available(), dec!(0)); // still disputed
+    assert_eq!(client1.held(), dec!(100));
+}
+
+#[test]
+fn test_chargeback_with_wrong_client_is_ignored() {
+    // Client 2 tries to chargeback Client 1's dispute
+    let input = "type,client,tx,amount
+deposit,1,1,100.0
+dispute,1,1,
+chargeback,2,1,";
+
+    let output = process_csv(input);
+    let accounts = parse_output(&output);
+
+    // Client 2's chargeback attempt should be ignored
+    let client1 = accounts.iter().find(|a| a.client_id() == 1).unwrap();
+    assert_eq!(client1.available(), dec!(0));
+    assert_eq!(client1.held(), dec!(100)); // still held, not charged back
+    assert!(!client1.is_locked()); // not locked
 }
 
 #[test]
@@ -463,4 +553,24 @@ chargeback,1,1,";
     assert_eq!(accounts[0].held(), dec!(0));
     assert_eq!(accounts[0].total(), dec!(50));
     assert!(accounts[0].is_locked()); // locked
+}
+
+#[test]
+fn test_double_chargeback_is_ignored() {
+    let input = "type,client,tx,amount
+deposit,1,1,100.0
+dispute,1,1,
+chargeback,1,1,
+dispute,1,1,
+chargeback,1,1,";
+
+    let output = process_csv(input);
+    let accounts = parse_output(&output);
+
+    // Second chargeback should be ignored (account already locked)
+    assert_eq!(accounts.len(), 1);
+    assert_eq!(accounts[0].available(), dec!(0));
+    assert_eq!(accounts[0].held(), dec!(0));
+    assert_eq!(accounts[0].total(), dec!(0));
+    assert!(accounts[0].is_locked());
 }

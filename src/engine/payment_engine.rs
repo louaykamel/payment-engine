@@ -120,6 +120,12 @@ impl PaymentEngine {
 // =============================================================================
 
 impl PaymentEngine {
+    /// Handle a deposit transaction.
+    ///
+    /// From spec: "A deposit is a credit to the client's asset account, meaning it should
+    /// increase the available and total funds of the client account."
+    ///
+    /// Creates the client account if it doesn't exist.
     fn handle_deposit(&mut self, deposit: Deposit) -> Result<(), ProcessingError> {
         log::trace!(
             "[deposit] client={} amount={}",
@@ -157,6 +163,13 @@ impl PaymentEngine {
         Ok(())
     }
 
+    /// Handle a withdrawal transaction.
+    ///
+    /// From spec: "A withdraw is a debit to the client's asset account, meaning it should
+    /// decrease the available and total funds of the client account."
+    ///
+    /// From spec: "If a client does not have sufficient available funds the withdrawal
+    /// should fail and the total amount of funds should not change."
     fn handle_withdrawal(&mut self, withdrawal: Withdrawal) -> Result<(), ProcessingError> {
         log::trace!(
             "[withdrawal] client={} amount={}",
@@ -194,6 +207,16 @@ impl PaymentEngine {
         Ok(())
     }
 
+    /// Handle a dispute transaction.
+    ///
+    /// From spec: "A dispute represents a client's claim that a transaction was erroneous
+    /// and should be reversed. The transaction shouldn't be reversed yet but the associated
+    /// funds should be held. This means that the clients available funds should decrease by
+    /// the amount disputed, their held funds should increase by the amount disputed, while
+    /// their total funds should remain the same."
+    ///
+    /// From spec: "If the tx specified by the dispute doesn't exist you can ignore it and
+    /// assume this is an error on our partner's side."
     fn handle_dispute(&mut self, dispute: Dispute) -> Result<(), ProcessingError> {
         log::trace!(
             "[dispute] client={} ref_tx={}",
@@ -241,6 +264,16 @@ impl PaymentEngine {
         Ok(())
     }
 
+    /// Handle a resolve transaction.
+    ///
+    /// From spec: "A resolve represents a resolution to a dispute, releasing the associated
+    /// held funds. Funds that were previously disputed are no longer disputed. This means
+    /// that the clients held funds should decrease by the amount no longer disputed, their
+    /// available funds should increase by the amount no longer disputed, and their total
+    /// funds should remain the same."
+    ///
+    /// From spec: "If the tx specified doesn't exist, or the tx isn't under dispute, you
+    /// can ignore the resolve and assume this is an error on our partner's side."
     fn handle_resolve(&mut self, resolve: Resolve) -> Result<(), ProcessingError> {
         log::trace!(
             "[resolve] client={} ref_tx={}",
@@ -288,6 +321,15 @@ impl PaymentEngine {
         Ok(())
     }
 
+    /// Handle a chargeback transaction.
+    ///
+    /// From spec: "A chargeback is the final state of a dispute and represents the client
+    /// reversing a transaction. Funds that were held have now been withdrawn. This means
+    /// that the clients held funds and total funds should decrease by the amount previously
+    /// disputed. If a chargeback occurs the client's account should be immediately frozen."
+    ///
+    /// From spec: "If the tx specified doesn't exist, or the tx isn't under dispute, you
+    /// can ignore chargeback and assume this is an error on our partner's side."
     fn handle_chargeback(&mut self, chargeback: Chargeback) -> Result<(), ProcessingError> {
         log::trace!(
             "[chargeback] client={} ref_tx={}",
@@ -323,6 +365,11 @@ impl PaymentEngine {
             .accounts
             .get_mut(&client_id)
             .ok_or(ProcessingError::AccountNotFound { client: client_id })?;
+
+        // Sanity check
+        if account.is_locked() {
+            return Err(ProcessingError::AccountLocked { client: client_id });
+        }
 
         self.disputes.remove(&referenced_tx_id);
         account.chargeback(amount);
