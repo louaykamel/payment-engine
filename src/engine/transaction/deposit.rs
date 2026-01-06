@@ -13,8 +13,6 @@ pub struct Deposit {
     client_id: u16,
     transaction_id: u32,
     amount: Decimal,
-    /// Whether this deposit is currently under dispute
-    is_disputed: bool,
 }
 
 impl Deposit {
@@ -28,20 +26,6 @@ impl Deposit {
 
     pub fn amount(&self) -> Decimal {
         self.amount
-    }
-
-    pub fn is_disputed(&self) -> bool {
-        self.is_disputed
-    }
-
-    /// Mark this deposit as under dispute
-    pub fn set_disputed(&mut self) {
-        self.is_disputed = true;
-    }
-
-    /// Clear the dispute flag (when resolved)
-    pub fn clear_disputed(&mut self) {
-        self.is_disputed = false;
     }
 }
 
@@ -59,7 +43,6 @@ impl TryFrom<TransactionRecord> for Deposit {
                 client_id: client,
                 transaction_id: tx,
                 amount,
-                is_disputed: false,
             }),
             _ => Err(TransactionError::InvalidTransaction(record)),
         }
@@ -88,7 +71,6 @@ mod tests {
         assert_eq!(deposit.client_id(), 1);
         assert_eq!(deposit.transaction_id(), 1);
         assert_eq!(deposit.amount(), dec!(100.5));
-        assert!(!deposit.is_disputed());
     }
 
     #[test]

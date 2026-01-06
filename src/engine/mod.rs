@@ -13,4 +13,5 @@ mod transaction;
 
 pub(crate) use rust_decimal::Decimal;
 
+pub use account::Account;
 pub use payment_engine::PaymentEngine;

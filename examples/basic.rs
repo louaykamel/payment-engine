@@ -1,4 +1,4 @@
-//! Basic example of using the PaymentEngine.
+//! Basic example of using the `PaymentEngine`.
 //!
 //! Run with: `cargo run --example basic`
 
@@ -10,7 +10,7 @@ fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     // Sample transactions as CSV
-    let transactions = r#"type,client,tx,amount
+    let transactions = r"type,client,tx,amount
 deposit,1,1,100.0
 deposit,2,2,200.0
 deposit,1,3,50.0
@@ -21,7 +21,7 @@ deposit,1,5,25.0
 withdrawal,2,6,50.0
 dispute,1,1,
 chargeback,1,1,
-"#;
+";
 
     // Create engine and process transactions
     let mut engine = PaymentEngine::new();

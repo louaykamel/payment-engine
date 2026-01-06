@@ -1,8 +1,8 @@
-//! Integration tests for the PaymentEngine.
+//! Integration tests for the `PaymentEngine`.
 //!
 //! These tests exercise the full E2E flow: CSV input → processing → CSV output.
-
-use payment_engine::PaymentEngine;
+use payment_engine::{Account, PaymentEngine};
+use rust_decimal_macros::dec;
 use std::io::Cursor;
 
 /// Helper to run a transaction CSV through the engine and get output
@@ -17,9 +17,9 @@ fn process_csv(input: &str) -> String {
 }
 
 /// Parse CSV output into a vec of (client, available, held, total, locked)
-fn parse_output(output: &str) -> Vec<(u16, String, String, String, bool)> {
+fn parse_output(output: &str) -> Vec<Account> {
     let mut rdr = csv::Reader::from_reader(output.as_bytes());
-    rdr.deserialize().map(|r| r.unwrap()).collect()
+    rdr.deserialize::<Account>().map(|r| r.unwrap()).collect()
 }
 
 #[test]
@@ -31,11 +31,11 @@ deposit,1,1,100.0";
     let accounts = parse_output(&output);
 
     assert_eq!(accounts.len(), 1);
-    assert_eq!(accounts[0].0, 1); // client
-    assert_eq!(accounts[0].1, "100"); // available
-    assert_eq!(accounts[0].2, "0"); // held
-    assert_eq!(accounts[0].3, "100"); // total
-    assert!(!accounts[0].4); // not locked
+    assert_eq!(accounts[0].client_id(), 1); // client
+    assert_eq!(accounts[0].available(), dec!(100)); // available
+    assert_eq!(accounts[0].held(), dec!(0)); // held
+    assert_eq!(accounts[0].total(), dec!(100)); // total
+    assert!(!accounts[0].is_locked()); // not locked
 }
 
 #[test]
@@ -48,8 +48,8 @@ withdrawal,1,2,40.0";
     let accounts = parse_output(&output);
 
     assert_eq!(accounts.len(), 1);
-    assert_eq!(accounts[0].1, "60"); // available
-    assert_eq!(accounts[0].3, "60"); // total
+    assert_eq!(accounts[0].available(), dec!(60)); // available
+    assert_eq!(accounts[0].total(), dec!(60)); // total
 }
 
 #[test]
@@ -62,8 +62,8 @@ withdrawal,1,2,100";
     let accounts = parse_output(&output);
 
     // Withdrawal should be skipped due to insufficient funds
-    assert_eq!(accounts[0].1, "50");
-    assert_eq!(accounts[0].3, "50");
+    assert_eq!(accounts[0].available(), dec!(50));
+    assert_eq!(accounts[0].total(), dec!(50));
 }
 
 #[test]
@@ -75,9 +75,9 @@ dispute,1,1,";
     let output = process_csv(input);
     let accounts = parse_output(&output);
 
-    assert_eq!(accounts[0].1, "0"); // available (held)
-    assert_eq!(accounts[0].2, "100"); // held
-    assert_eq!(accounts[0].3, "100"); // total unchanged
+    assert_eq!(accounts[0].available(), dec!(0)); // available (held)
+    assert_eq!(accounts[0].held(), dec!(100)); // held
+    assert_eq!(accounts[0].total(), dec!(100)); // total unchanged
 }
 
 #[test]
@@ -90,9 +90,9 @@ resolve,1,1,";
     let output = process_csv(input);
     let accounts = parse_output(&output);
 
-    assert_eq!(accounts[0].1, "100"); // available (released)
-    assert_eq!(accounts[0].2, "0"); // held
-    assert_eq!(accounts[0].3, "100"); // total unchanged
+    assert_eq!(accounts[0].available(), dec!(100)); // available (released)
+    assert_eq!(accounts[0].held(), dec!(0)); // held
+    assert_eq!(accounts[0].total(), dec!(100)); // total unchanged
 }
 
 #[test]
@@ -105,10 +105,10 @@ chargeback,1,1,";
     let output = process_csv(input);
     let accounts = parse_output(&output);
 
-    assert_eq!(accounts[0].1, "0"); // available
-    assert_eq!(accounts[0].2, "0"); // held (removed)
-    assert_eq!(accounts[0].3, "0"); // total reduced
-    assert!(accounts[0].4); // locked!
+    assert_eq!(accounts[0].available(), dec!(0)); // available
+    assert_eq!(accounts[0].held(), dec!(0)); // held (removed)
+    assert_eq!(accounts[0].total(), dec!(0)); // total reduced
+    assert!(accounts[0].is_locked()); // locked!
 }
 
 #[test]
@@ -123,8 +123,8 @@ deposit,1,2,500.0";
     let accounts = parse_output(&output);
 
     // Second deposit should be ignored because account is locked
-    assert_eq!(accounts[0].3, "0");
-    assert!(accounts[0].4);
+    assert_eq!(accounts[0].total(), dec!(0));
+    assert!(accounts[0].is_locked());
 }
 
 #[test]
@@ -137,8 +137,8 @@ dispute,2,1,";
     let accounts = parse_output(&output);
 
     // Dispute from wrong client should be ignored
-    assert_eq!(accounts[0].1, "100"); // still available
-    assert_eq!(accounts[0].2, "0"); // not held
+    assert_eq!(accounts[0].available(), dec!(100)); // still available
+    assert_eq!(accounts[0].held(), dec!(0)); // not held
 }
 
 #[test]
@@ -151,8 +151,8 @@ resolve,1,1,";
     let accounts = parse_output(&output);
 
     // Resolve without dispute should be ignored
-    assert_eq!(accounts[0].1, "100");
-    assert_eq!(accounts[0].2, "0");
+    assert_eq!(accounts[0].available(), dec!(100));
+    assert_eq!(accounts[0].held(), dec!(0));
 }
 
 #[test]
@@ -167,11 +167,11 @@ withdrawal,1,3,30.0";
 
     assert_eq!(accounts.len(), 2);
     // Note: order may vary, so find by client id
-    let client1 = accounts.iter().find(|a| a.0 == 1).unwrap();
-    let client2 = accounts.iter().find(|a| a.0 == 2).unwrap();
+    let client1 = accounts.iter().find(|a| a.client_id() == 1).unwrap();
+    let client2 = accounts.iter().find(|a| a.client_id() == 2).unwrap();
 
-    assert_eq!(client1.1, "70");
-    assert_eq!(client2.1, "200");
+    assert_eq!(client1.available(), dec!(70));
+    assert_eq!(client2.available(), dec!(200));
 }
 
 #[test]
@@ -183,7 +183,7 @@ deposit,1,2,0.0001";
     let output = process_csv(input);
     let accounts = parse_output(&output);
 
-    assert_eq!(accounts[0].1, "1.2346");
+    assert_eq!(accounts[0].available(), dec!(1.2346));
 }
 
 // ============================================================================
@@ -261,7 +261,7 @@ fn test_accepts_valid_precision_variants() {
     ];
 
     for input in inputs {
-        assert!(try_process_csv(input).is_ok(), "Should accept: {}", input);
+        assert!(try_process_csv(input).is_ok(), "Should accept: {input}");
     }
 }
 
@@ -273,7 +273,7 @@ deposit,  1,  1,  100.0";
     let output = process_csv(input);
     let accounts = parse_output(&output);
 
-    assert_eq!(accounts[0].1, "100");
+    assert_eq!(accounts[0].available(), dec!(100));
 }
 
 // ============================================================================
@@ -291,9 +291,9 @@ dispute,1,1,";
     let accounts = parse_output(&output);
 
     // available = 20 - 100 = -80 (negative is allowed per spec)
-    assert_eq!(accounts[0].1, "-80");
-    assert_eq!(accounts[0].2, "100"); // held
-    assert_eq!(accounts[0].3, "20"); // total unchanged
+    assert_eq!(accounts[0].available(), dec!(-80));
+    assert_eq!(accounts[0].held(), dec!(100)); // held
+    assert_eq!(accounts[0].total(), dec!(20)); // total unchanged
 }
 
 #[test]
@@ -307,8 +307,8 @@ dispute,1,1,";
     let accounts = parse_output(&output);
 
     // Second dispute should be ignored (already under dispute)
-    assert_eq!(accounts[0].1, "0");
-    assert_eq!(accounts[0].2, "100"); // held once, not twice
+    assert_eq!(accounts[0].available(), dec!(0));
+    assert_eq!(accounts[0].held(), dec!(100)); // held once, not twice
 }
 
 #[test]
@@ -321,9 +321,9 @@ chargeback,1,1,";
     let accounts = parse_output(&output);
 
     // Chargeback without dispute should be ignored
-    assert_eq!(accounts[0].1, "100");
-    assert_eq!(accounts[0].3, "100");
-    assert!(!accounts[0].4); // not locked
+    assert_eq!(accounts[0].available(), dec!(100));
+    assert_eq!(accounts[0].total(), dec!(100));
+    assert!(!accounts[0].is_locked()); // not locked
 }
 
 #[test]
@@ -338,8 +338,8 @@ dispute,1,1,";
     let accounts = parse_output(&output);
 
     // Can dispute again after resolve
-    assert_eq!(accounts[0].1, "0");
-    assert_eq!(accounts[0].2, "100");
+    assert_eq!(accounts[0].available(), dec!(0));
+    assert_eq!(accounts[0].held(), dec!(100));
 }
 
 #[test]
@@ -352,9 +352,9 @@ resolve,1,1,";
     let accounts = parse_output(&output);
 
     // Resolve without dispute should be ignored
-    assert_eq!(accounts[0].1, "100");
-    assert_eq!(accounts[0].3, "100");
-    assert!(!accounts[0].4); // not locked
+    assert_eq!(accounts[0].available(), dec!(100));
+    assert_eq!(accounts[0].total(), dec!(100));
+    assert!(!accounts[0].is_locked()); // not locked
 }
 
 #[test]
@@ -368,9 +368,9 @@ chargeback,2,1,";
     let accounts = parse_output(&output);
 
     // Chargeback from wrong client is ignored
-    assert_eq!(accounts[0].1, "0");
-    assert_eq!(accounts[0].2, "100");
-    assert!(!accounts[0].4); // not locked
+    assert_eq!(accounts[0].available(), dec!(0));
+    assert_eq!(accounts[0].held(), dec!(100));
+    assert!(!accounts[0].is_locked()); // not locked
 }
 
 #[test]
@@ -383,8 +383,8 @@ dispute,1,999,";
     let accounts = parse_output(&output);
 
     // Dispute on non-existent tx is ignored
-    assert_eq!(accounts[0].1, "100");
-    assert_eq!(accounts[0].2, "0");
+    assert_eq!(accounts[0].available(), dec!(100));
+    assert_eq!(accounts[0].held(), dec!(0));
 }
 
 #[test]
@@ -409,7 +409,7 @@ deposit,1,3,25.25";
     let output = process_csv(input);
     let accounts = parse_output(&output);
 
-    assert_eq!(accounts[0].1, "175.75");
+    assert_eq!(accounts[0].available(), dec!(175.75));
 }
 
 #[test]
@@ -425,10 +425,10 @@ chargeback,1,1,";
     let output = process_csv(input);
     let accounts = parse_output(&output);
 
-    assert_eq!(accounts[0].1, "0");
-    assert_eq!(accounts[0].2, "0");
-    assert_eq!(accounts[0].3, "0");
-    assert!(accounts[0].4); // locked
+    assert_eq!(accounts[0].available(), dec!(0));
+    assert_eq!(accounts[0].held(), dec!(0));
+    assert_eq!(accounts[0].total(), dec!(0));
+    assert!(accounts[0].is_locked()); // locked
 }
 
 #[test]
@@ -442,9 +442,9 @@ dispute,1,2,";
     let output = process_csv(input);
     let accounts = parse_output(&output);
 
-    assert_eq!(accounts[0].1, "0");
-    assert_eq!(accounts[0].2, "150"); // both held
-    assert_eq!(accounts[0].3, "150");
+    assert_eq!(accounts[0].available(), dec!(0));
+    assert_eq!(accounts[0].held(), dec!(150)); // both held
+    assert_eq!(accounts[0].total(), dec!(150));
 }
 
 #[test]
@@ -459,8 +459,8 @@ chargeback,1,1,";
     let accounts = parse_output(&output);
 
     // Only first deposit charged back, second still available (but account locked)
-    assert_eq!(accounts[0].1, "50");
-    assert_eq!(accounts[0].2, "0");
-    assert_eq!(accounts[0].3, "50");
-    assert!(accounts[0].4); // locked
+    assert_eq!(accounts[0].available(), dec!(50));
+    assert_eq!(accounts[0].held(), dec!(0));
+    assert_eq!(accounts[0].total(), dec!(50));
+    assert!(accounts[0].is_locked()); // locked
 }

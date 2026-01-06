@@ -1,12 +1,15 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
 
-use super::account::{Account, ClientId};
+use super::account::ClientId;
 use super::error::{Error, ProcessingError};
 use super::transaction::{
     Chargeback, Deposit, Dispute, Resolve, Transaction, TransactionId, TransactionRecord,
     Withdrawal,
 };
+
+// Export this for testing purposes
+use super::account::Account;
 
 /// The core payment processing engine.
 ///
@@ -18,6 +21,8 @@ pub struct PaymentEngine {
     accounts: HashMap<ClientId, Account>,
     /// Maps transaction ID to successful deposits for dispute lookups
     deposits: HashMap<TransactionId, Deposit>,
+    /// Set of disputed transactions (Under dispute)
+    disputes: HashSet<TransactionId>,
 }
 
 impl PaymentEngine {
@@ -27,6 +32,7 @@ impl PaymentEngine {
         Self {
             accounts: HashMap::new(),
             deposits: HashMap::new(),
+            disputes: HashSet::new(),
         }
     }
 
@@ -45,8 +51,8 @@ impl PaymentEngine {
         for result in csv_reader.deserialize() {
             // Step 1:Parse CSV record into raw dirty TransactionRecord
             let record: TransactionRecord = result?;
-            let row_num = processed + skipped + 1;
 
+            let row_num = processed + skipped + 1;
             log::trace!(
                 "[row {}] Parsing: type={:?} client={} tx={} amount={:?}",
                 row_num,
@@ -211,7 +217,7 @@ impl PaymentEngine {
             });
         }
 
-        if deposit.is_disputed() {
+        if self.disputes.contains(&referenced_tx_id) {
             return Err(ProcessingError::AlreadyUnderDispute {
                 tx: referenced_tx_id,
             });
@@ -228,7 +234,7 @@ impl PaymentEngine {
             return Err(ProcessingError::AccountLocked { client: client_id });
         }
 
-        deposit.set_disputed();
+        self.disputes.insert(referenced_tx_id);
         account.hold(amount);
 
         log::trace!("[dispute] client={client_id} ref_tx={referenced_tx_id} held={amount}");
@@ -258,7 +264,7 @@ impl PaymentEngine {
             });
         }
 
-        if !deposit.is_disputed() {
+        if !self.disputes.contains(&referenced_tx_id) {
             return Err(ProcessingError::NotUnderDispute {
                 tx: referenced_tx_id,
             });
@@ -275,7 +281,7 @@ impl PaymentEngine {
             return Err(ProcessingError::AccountLocked { client: client_id });
         }
 
-        deposit.clear_disputed();
+        self.disputes.remove(&referenced_tx_id);
         account.release(amount);
 
         log::trace!("[resolve] client={client_id} ref_tx={referenced_tx_id} released={amount}");
@@ -305,7 +311,7 @@ impl PaymentEngine {
             });
         }
 
-        if !deposit.is_disputed() {
+        if !self.disputes.contains(&referenced_tx_id) {
             return Err(ProcessingError::NotUnderDispute {
                 tx: referenced_tx_id,
             });
@@ -318,7 +324,7 @@ impl PaymentEngine {
             .get_mut(&client_id)
             .ok_or(ProcessingError::AccountNotFound { client: client_id })?;
 
-        deposit.clear_disputed();
+        self.disputes.remove(&referenced_tx_id);
         account.chargeback(amount);
 
         log::trace!(
