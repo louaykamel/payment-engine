@@ -44,6 +44,7 @@ rust_decimal_macros = "1.39.0"
 [lints.rust]
 unsafe_code = "forbid"
 
+# Run cargo clippy --all-targets --all-features -- -D clippy::all
 [lints.clippy]
 all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
