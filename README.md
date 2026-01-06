@@ -184,7 +184,27 @@ engine.process_transactions(Cursor::new(csv))?;
 engine.export_accounts(std::io::stdout())?;
 ```
 
-## Note on Development
+## AI Tool Declaration
 
-This project was developed with AI assistance (for productivity: faster test writing, boilerplate, documentation). All design decisions, architecture, and error handling strategies were guided by me. Transparency matters.
+Per AI policy, I declare the following AI tool usage:
+
+**Tools Used:**
+- Anthropic Claude (Opus 4) via Antigravity IDE extension (planning + execution modes)
+
+**Where AI Assisted:**
+- **Test writing**: Faster generation of integration test cases (edge cases, assertions)
+- **Boilerplate code**: Serde derives, error type scaffolding, CLI setup
+- **Documentation**: Doc comments, README sections, spec reference formatting
+- **Refactoring**: Renaming, moving code between files, clippy fixes
+
+**What I Designed/Decided:**
+- Core architecture: `PaymentEngine` with separate `process_transactions` / `export_accounts` API
+- Error handling strategy: Hard errors vs soft errors, when to stop vs continue
+- Dispute tracking: `HashSet<TransactionId>` instead of flag on `Deposit` struct
+- 4 decimal precision enforcement on output
+- `debug_assert!` for invariant checks
+- All business logic interpretations (negative available, client mismatch handling, etc.)
+
+I guided all design decisions and can discuss any technical choice in detail.
+
 
