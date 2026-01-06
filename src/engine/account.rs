@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize, Serializer};
 pub type ClientId = u16;
 
 /// Serialize Decimal with exactly 4 decimal places
+/// NOTE: this cancels the `normalize()` impact in the CSV output
 fn serialize_decimal_4dp<S: Serializer>(value: &Decimal, serializer: S) -> Result<S::Ok, S::Error> {
     serializer.serialize_str(&format!("{value:.4}"))
 }
@@ -165,7 +166,6 @@ impl Account {
 
     /// Normalize all decimal fields to trim trailing zeros.
     /// Keeps internal representation compact and consistent.
-    /// NOTE:
     fn normalize(&mut self) {
         self.available = self.available.normalize();
         self.held = self.held.normalize();
