@@ -1,0 +1,21 @@
+# cargo-deny configuration
+# https://embarkstudios.github.io/cargo-deny/
+
+[advisories]
+version = 2
+db-path = "~/.cargo/advisory-db"
+ignore = []
+
+[licenses]
+version = 2
+# Allow common permissive licenses used by our dependencies
+allow = ["MIT", "Apache-2.0", "Unlicense", "Unicode-3.0"]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

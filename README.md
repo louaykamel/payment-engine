@@ -141,6 +141,10 @@ Key scenarios tested:
 | `anyhow` | Error context in main() |
 | `log` + `env_logger` | Logging (`RUST_LOG=debug`) |
 
+> ⚠️ **Security Note**: In production, the entire `Cargo.lock` dependency tree should be audited—even for widely-trusted crates with millions of downloads. Use tools like `cargo-audit` and `cargo-deny`, and maintain an SBOM (Software Bill of Materials).
+
+> 📌 **Version Note**: `rust_decimal` is pinned to `1.38.0` because `1.39.0` pulled in `rkyv 0.7.45` which has [RUSTSEC-2026-0001](https://rustsec.org/advisories/RUSTSEC-2026-0001) (potential undefined behavior in `Arc<T>`/`Rc<T>` on OOM). Discovered via `cargo audit`.
+
 ## Project Structure
 
 ```
